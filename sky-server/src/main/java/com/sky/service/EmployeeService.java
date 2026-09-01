@@ -18,4 +18,15 @@ public interface EmployeeService {
     void save(EmployeeDTO employeeDTO);
 
     PageResult pageQuery(EmployeePageQueryDTO employeePageQueryDTO);
+
+    /**
+     * 启用/禁用员工账号
+     * @param status
+     * @param id
+     */
+    void setAccountStatus(Integer status, Long id);
+
+    Employee getEmployeeById(Long id);
+
+    void update(EmployeeDTO employeeDTO);
 }
