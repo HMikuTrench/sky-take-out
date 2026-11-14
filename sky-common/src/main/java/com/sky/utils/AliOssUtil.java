@@ -1,9 +1,9 @@
 package com.sky.utils;
 
-import com.aliyun.oss.ClientException;
-import com.aliyun.oss.OSS;
-import com.aliyun.oss.OSSClientBuilder;
-import com.aliyun.oss.OSSException;
+import com.aliyun.oss.*;
+import com.aliyun.oss.common.auth.DefaultCredentialProvider;
+import com.aliyun.oss.common.comm.SignVersion;
+import com.aliyun.oss.model.ObjectMetadata;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -18,7 +18,7 @@ public class AliOssUtil {
     private String accessKeyId;
     private String accessKeySecret;
     private String bucketName;
-
+    private String region;
     /**
      * 文件上传
      *
@@ -26,26 +26,48 @@ public class AliOssUtil {
      * @param objectName
      * @return
      */
-    public String upload(byte[] bytes, String objectName) {
+    public String upload(byte[] bytes, String objectName) throws Exception {
+        if (bytes == null || bytes.length == 0) {
+            throw new RuntimeException("上传的文件内容不能为空");
+        }
+        if (objectName == null || objectName.isEmpty()) {
+            throw new RuntimeException("上传的文件路径不能为空");
+        }
+        if (bucketName == null || bucketName.isEmpty()) {
+            throw new RuntimeException("Bucket 名称不能为空");
+        }
+        // SDK 只接受域名形式的 endpoint（oss-cn-beijing.aliyuncs.com），这里兼容配置里带 http(s):// 的写法
+        String host = normalizeEndpoint(endpoint);
+        if (host.isEmpty()) {
+            throw new RuntimeException("OSS endpoint 不能为空");
+        }
+        if (region == null || region.isEmpty()) {
+            throw new RuntimeException("V4 签名必须配置 region，例如 cn-beijing");
+        }
 
-        // 创建OSSClient实例。
-        OSS ossClient = new OSSClientBuilder().build(endpoint, accessKeyId, accessKeySecret);
+        // 使用 V4 签名并指定 region
+        ClientBuilderConfiguration clientBuilderConfiguration = new ClientBuilderConfiguration();
+        clientBuilderConfiguration.setSignatureVersion(SignVersion.V4);
+
+        OSS ossClient = OSSClientBuilder.create()
+                .endpoint("https://" + host)
+                .credentialsProvider(new DefaultCredentialProvider(accessKeyId, accessKeySecret))
+                .clientConfiguration(clientBuilderConfiguration)
+                .region(region)
+                .build();
 
         try {
-            // 创建PutObject请求。
-            ossClient.putObject(bucketName, objectName, new ByteArrayInputStream(bytes));
+            // 显式给出内容长度，避免流式上传走 chunked + UNSIGNED-PAYLOAD 分支
+            ObjectMetadata metadata = new ObjectMetadata();
+            metadata.setContentLength(bytes.length);
+            ossClient.putObject(bucketName, objectName, new ByteArrayInputStream(bytes), metadata);
         } catch (OSSException oe) {
-            System.out.println("Caught an OSSException, which means your request made it to OSS, "
-                    + "but was rejected with an error response for some reason.");
-            System.out.println("Error Message:" + oe.getErrorMessage());
-            System.out.println("Error Code:" + oe.getErrorCode());
-            System.out.println("Request ID:" + oe.getRequestId());
-            System.out.println("Host ID:" + oe.getHostId());
+            log.error("OSSException, ErrorMessage={}, ErrorCode={}, RequestId={}, HostId={}",
+                    oe.getErrorMessage(), oe.getErrorCode(), oe.getRequestId(), oe.getHostId());
+            throw new RuntimeException("OSS 上传失败：" + oe.getErrorMessage(), oe);
         } catch (ClientException ce) {
-            System.out.println("Caught an ClientException, which means the client encountered "
-                    + "a serious internal problem while trying to communicate with OSS, "
-                    + "such as not being able to access the network.");
-            System.out.println("Error Message:" + ce.getMessage());
+            log.error("ClientException, ErrorMessage={}", ce.getMessage());
+            throw new RuntimeException("OSS 客户端异常：" + ce.getMessage(), ce);
         } finally {
             if (ossClient != null) {
                 ossClient.shutdown();
@@ -53,16 +75,29 @@ public class AliOssUtil {
         }
 
         //文件访问路径规则 https://BucketName.Endpoint/ObjectName
-        StringBuilder stringBuilder = new StringBuilder("https://");
-        stringBuilder
-                .append(bucketName)
-                .append(".")
-                .append(endpoint)
-                .append("/")
-                .append(objectName);
+        String url = "https://" + bucketName + "." + host + "/" + objectName;
 
-        log.info("文件上传到:{}", stringBuilder.toString());
+        log.info("文件上传到:{}", url);
 
-        return stringBuilder.toString();
+        return url;
+    }
+
+    /**
+     * 去掉配置里可能带的协议头和结尾斜杠，只保留域名部分
+     */
+    private static String normalizeEndpoint(String rawEndpoint) {
+        if (rawEndpoint == null) {
+            return "";
+        }
+        String host = rawEndpoint.trim();
+        if (host.startsWith("https://")) {
+            host = host.substring("https://".length());
+        } else if (host.startsWith("http://")) {
+            host = host.substring("http://".length());
+        }
+        while (host.endsWith("/")) {
+            host = host.substring(0, host.length() - 1);
+        }
+        return host;
     }
 }

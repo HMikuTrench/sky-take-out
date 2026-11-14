@@ -63,8 +63,9 @@ public class AutoFillAspect {
                 setCreateUser.invoke(entity, currentId);
                 setUpdateTime.invoke(entity, now);
                 setUpdateUser.invoke(entity, currentId);
-            } catch (Exception e) {
-                e.printStackTrace();
+            } catch (ReflectiveOperationException e) {
+                // 参数对象缺公共字段说明传错了类型（例如传了 DTO），不要让它在插入时才以 NullPointer 形式暴露
+                throw new RuntimeException("公共字段自动填充失败，参数类型：" + entity.getClass().getName(), e);
             }
         }else if(operationType == OperationType.UPDATE){
             try {
@@ -72,8 +73,8 @@ public class AutoFillAspect {
                 Method setUpdateUser = entity.getClass().getDeclaredMethod(AutoFillConstant.SET_UPDATE_USER, Long.class);
                 setUpdateUser.invoke(entity, currentId);
                 setUpdateTime.invoke(entity, now);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
+            } catch (ReflectiveOperationException e) {
+                throw new RuntimeException("公共字段自动填充失败，参数类型：" + entity.getClass().getName(), e);
             }
         }
     }
