@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.sky.mapper.SetmealMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into setmeal (category_id, name, price, status, description, image, create_time, update_time, create_user, update_user) VALUES
+        (#{categoryId}, #{name}, #{price}, #{status}, #{description}, #{image}, #{createTime}, #{updateTime}, #{createUser}, #{updateUser})
+    </insert>
+    <update id="updateSetmeal" parameterType="Setmeal">
+        update setmeal
+        <set>
+            <if test="categoryId != null">
+                category_id = #{categoryId},
+            </if>
+            <if test="name != null and name != ''">
+                name = #{name},
+            </if>
+            <if test="price != null">
+                price = #{price},
+            </if>
+            <if test="status != null">
+                status = #{status},
+            </if>
+            <if test="description != null and description != ''">
+                description = #{description},
+            </if>
+            <if test="image != null and image != ''">
+                image = #{image},
+            </if>
+            <if test="updateUser != null">
+                update_user = #{updateUser},
+            </if>
+            <!-- update_time 始终刷新，放在最后不带逗号 -->
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+    <delete id="delete">
+        delete from setmeal where id in
+        <foreach collection="ids" item="id" separator="," open="(" close=")">#{id}</foreach>
+    </delete>
+    <select id="pageQuery" resultType="com.sky.vo.SetmealVO" >
+        select s.* , c.name as categoryName from setmeal as s left join category as c on s.category_id = c.id
+        <where>
+            <if test="name != null and name != ''">
+                and s.name like concat('%', #{name}, '%')
+            </if>
+            <if test="categoryId != null">
+                and s.category_id = #{categoryId}
+            </if>
+            <if test="status != null">
+                and s.status = #{status}
+            </if>
+        </where>
+        order by s.update_time desc
+    </select>
+    <!--
+        getSetmealById 由 SetmealMapper 接口上的 @Select 提供：
+        @Select("select * from setmeal where id = #{id}")
+        这里不要再写同名 <select>，否则 MyBatis 注册语句时抛：
+        Mapped Statements collection already contains value for com.sky.mapper.SetmealMapper.getSetmealById
+    -->
+</mapper>
