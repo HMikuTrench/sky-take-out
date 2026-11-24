@@ -60,4 +60,18 @@
         这里不要再写同名 <select>，否则 MyBatis 注册语句时抛：
         Mapped Statements collection already contains value for com.sky.mapper.SetmealMapper.getSetmealById
     -->
+    <select id="list" parameterType="Setmeal" resultType="Setmeal">
+        select * from setmeal
+        <where>
+            <if test="name != null">
+                and name like concat('%',#{name},'%')
+            </if>
+            <if test="categoryId != null">
+                and category_id = #{categoryId}
+            </if>
+            <if test="status != null">
+                and status = #{status}
+            </if>
+        </where>
+    </select>
 </mapper>

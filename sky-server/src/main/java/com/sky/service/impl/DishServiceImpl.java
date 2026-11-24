@@ -19,11 +19,14 @@ import com.sky.vo.DishVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @EnableTransactionManagement
@@ -35,6 +38,8 @@ public class DishServiceImpl implements DishService {
     private DishFlavorMapper dishFlavorMapper;
     @Autowired
     private SetMealDishMapper setMealDishMapper;
+    @Autowired
+    private RedisTemplate redisTemplate;
     /**
      * 新增菜品及其口味
      * @param dishDTO
@@ -54,6 +59,8 @@ public class DishServiceImpl implements DishService {
             });
             dishFlavorMapper.insertBatch(flavors);
         }
+        String key = "dish_" + dishDTO.getCategoryId();
+        cleanCache(key);
     }
 
     /**
@@ -91,6 +98,8 @@ public class DishServiceImpl implements DishService {
 //        }
         dishMapper.deleteByIds(ids);
         dishFlavorMapper.deleteByDishIds(ids);
+
+        cleanCache("dish_*");
     }
 
     @Override
@@ -117,6 +126,7 @@ public class DishServiceImpl implements DishService {
             });
             dishFlavorMapper.insertBatch(flavors);
         }
+        cleanCache("dish_*");
     }
 
     @Override
@@ -127,5 +137,47 @@ public class DishServiceImpl implements DishService {
                 .status(StatusConstant.ENABLE)
                 .build();
         return dishMapper.getByCategoryId(dish);
+    }
+
+    /**
+     * 条件查询菜品和口味
+     * @param dish
+     * @return
+     */
+    public List<DishVO> listWithFlavor(Dish dish) {
+
+        //设置key,以便于后面查询缓存是否存在
+        String key = "dish_" + dish.getCategoryId();
+        //获取缓存是否存在
+        List<DishVO> list = (List<DishVO>) redisTemplate.opsForValue().get(key);
+        //若存在，直接返回缓存
+        if(list != null && !list.isEmpty()){
+            log.info("使用缓存中的数据");
+            return list;
+        }
+        //若不存在，先从数据库中拉取
+        List<Dish> dishList = dishMapper.getByCategoryId(dish);
+
+        List<DishVO> dishVOList = new ArrayList<>();
+
+        for (Dish d : dishList) {
+            DishVO dishVO = new DishVO();
+            BeanUtils.copyProperties(d,dishVO);
+
+            //根据菜品id查询对应的口味
+            List<DishFlavor> flavors = dishFlavorMapper.getByDishId(d.getId());
+
+            dishVO.setFlavors(flavors);
+            dishVOList.add(dishVO);
+        }
+        //在存到缓存中
+        redisTemplate.opsForValue().set(key, dishVOList);
+
+        return dishVOList;
+    }
+
+    private void cleanCache(String pattern){
+        Set keys = redisTemplate.keys(pattern);
+        redisTemplate.delete(keys);
     }
 }
